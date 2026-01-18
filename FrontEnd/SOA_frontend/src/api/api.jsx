@@ -15,7 +15,7 @@ const handleResponse = async (response) => {
   return response.json();
 };
 
-// ==================== RESTAURANT ENDPOINTS ====================
+// new komentar
 
 // GET /restaurants - Get all restaurants
 export const getRestaurants = async () => {
