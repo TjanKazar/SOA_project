@@ -1,95 +1,63 @@
-name: SOA CI/CD Pipeline
+name: CI - Tests & Coverage
 
 on:
   push:
     branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
-  build:
+  frontend-tests:
+    name: Frontend Tests
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ---------- SETUP ----------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
+
+      - name: Install frontend dependencies
+        working-directory: FrontEnd/SOA_frontend
+        run: npm ci
+
+      - name: Run frontend tests with coverage
+        working-directory: FrontEnd/SOA_frontend
+        run: npm test -- --coverage
+
+      - name: Upload frontend coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: FrontEnd/SOA_frontend/coverage
+
+
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
 
-      # ---------- CACHE ----------
-      - name: Cache frontend node_modules
-        uses: actions/cache@v3
-        with:
-          path: FrontEnd/SOA_frontend/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('FrontEnd/SOA_frontend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      # ---------- FRONTEND ----------
-      - name: Install frontend deps
-        working-directory: FrontEnd/SOA_frontend
-        run: npm ci
-
-      - name: Lint frontend
-        working-directory: FrontEnd/SOA_frontend
-        run: npm run lint
-
-      - name: Build frontend
-        working-directory: FrontEnd/SOA_frontend
-        run: npm run build
-
-      # ---------- BACKEND ----------
-      - name: Install backend deps
+      - name: Install backend dependencies
         working-directory: restaurantService
         run: pip install -r requirements.txt
 
-      # ---------- ARTIFACTS ----------
-      - name: Upload frontend artifact
-        uses: actions/upload-artifact@v3
+      - name: Run backend tests with coverage
+        working-directory: restaurantService
+        run: pytest --cov --cov-report=html
+
+      - name: Upload backend coverage artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: frontend-dist
-          path: FrontEnd/SOA_frontend/dist
-
-  docker:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Login to Docker Hub
-        run: |
-          echo "${{ secrets.DCKR_PAT }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-
-      - name: Build frontend Docker image
-        run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/rirs-frontend:latest ./FrontEnd/SOA_frontend
-
-      - name: Build backend Docker image
-        run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/rirs-backend:latest ./restaurantService
-
-      - name: Push frontend Docker image
-        run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/rirs-frontend:latest
-
-      - name: Push backend Docker image
-        run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/rirs-backend:latest
-
-  deploy:
-    needs: docker
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Trigger Render Deploy
-        run: |
-          curl -X POST "${{ secrets.RENDER_DEPLOY_URL }}"
+          name: backend-coverage
+          path: restaurantService/htmlcov
