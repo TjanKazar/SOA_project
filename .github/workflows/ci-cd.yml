@@ -36,7 +36,7 @@ jobs:
         working-directory: FrontEnd/SOA_frontend
         run: npm run build
 
-      # ---------- BACKEND ----------
+      # ---------- BACKEND ----------  
       - name: Install backend deps
         working-directory: restaurantService
         run: |
