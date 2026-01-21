@@ -13,7 +13,7 @@ services:
     networks:
       - food-delivery-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/restaurants"]
+      test: ["CMD", "curl", "-f", "https://rirs-backend-1pv7.onrender.com/restaurants"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -24,7 +24,7 @@ services:
       context: ./FrontEnd/SOA_frontend
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=http://localhost:5000
+        - VITE_API_URL=https://rirs-backend-1pv7.onrender.com
     container_name: food-delivery-frontend
     ports:
       - "3000:80"
