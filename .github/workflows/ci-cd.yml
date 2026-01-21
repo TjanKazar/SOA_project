@@ -2,80 +2,82 @@ name: SOA CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       # ---------- SETUP ----------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       # ---------- FRONTEND ----------
-      - name: Install frontend deps
+      - name: Install frontend dependencies
         working-directory: FrontEnd/SOA_frontend
         run: npm ci
 
-      - name: Test frontend with coverage
+      - name: Run frontend tests with coverage
         working-directory: FrontEnd/SOA_frontend
         run: npm test -- --coverage --run
 
-      - name: upload frontend coverage
+      - name: Upload frontend coverage report
         uses: actions/upload-artifact@v4
         with:
           name: frontend-coverage
           path: FrontEnd/SOA_frontend/coverage
+          retention-days: 7
 
       - name: Build frontend
         working-directory: FrontEnd/SOA_frontend
         run: npm run build
 
-      # ---------- BACKEND ----------  
-      - name: Install backend deps
+      # ---------- BACKEND ----------
+      - name: Install backend dependencies
         working-directory: restaurantService
         run: |
           pip install -r requirements.txt
           pip install pytest pytest-cov
 
-      - name: Test backend with coverage
+      - name: Run backend tests with coverage
         working-directory: restaurantService
         run: pytest --cov=. --cov-report=html --cov-report=xml --cov-report=term
 
-      - name: Upload backend coverage
+      - name: Upload backend coverage report
         uses: actions/upload-artifact@v4
         with:
           name: backend-coverage
           path: restaurantService/htmlcov
+          retention-days: 7
 
   docker:
     needs: test-and-build
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Login to Docker Hub
         run: echo "${{ secrets.DCKR_PAT }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: Build and push frontend
+      - name: Build and push frontend image
         run: |
           docker build -t ${{ secrets.DOCKER_USERNAME }}/rirs-frontend:latest ./FrontEnd/SOA_frontend
-          docker push ${{ secrets.DOCKER_USERNAME }}/rirs-frontend:latest
+          docker push ${{ secrets.DOCKR_USERNAME }}/rirs-frontend:latest
 
-      - name: Build and push backend
+      - name: Build and push backend image
         run: |
           docker build -t ${{ secrets.DOCKER_USERNAME }}/rirs-backend:latest ./restaurantService
           docker push ${{ secrets.DOCKER_USERNAME }}/rirs-backend:latest
