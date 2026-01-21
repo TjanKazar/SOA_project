@@ -2,94 +2,221 @@ name: SOA CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main", "production"] # Triggers on both branches now
+
+# Global permissions required for GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
-  build:
+  # 1. TEST & BUILD (Runs on all branches)
+  test-and-build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       # ---------- SETUP ----------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-
-      # ---------- CACHE ----------
-      - name: Cache frontend node_modules
-        uses: actions/cache@v3
+      # CACHING NODE MODULES
+      - name: Cache Node.js dependencies
+        uses: actions/cache@v4
         with:
           path: FrontEnd/SOA_frontend/node_modules
           key: ${{ runner.os }}-node-${{ hashFiles('FrontEnd/SOA_frontend/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
 
-      # ---------- FRONTEND ----------
-      - name: Install frontend deps
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # CACHING PYTHON PACKAGES
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('restaurantService/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # ---------- FRONTEND TESTS ----------
+      - name: Install frontend dependencies
         working-directory: FrontEnd/SOA_frontend
         run: npm ci
 
-      - name: Lint frontend
+      - name: Run frontend tests
         working-directory: FrontEnd/SOA_frontend
-        run: npm run lint
+        run: npm test -- --coverage --run
 
-      - name: Build frontend
+      - name: Upload frontend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: FrontEnd/SOA_frontend/coverage
+          retention-days: 7
+
+      - name: Build frontend (create dist)
         working-directory: FrontEnd/SOA_frontend
         run: npm run build
 
-      # ---------- BACKEND ----------
-      - name: Install backend deps
-        working-directory: restaurantService
-        run: pip install -r requirements.txt
-
-      # ---------- ARTIFACTS ----------
-      - name: Upload frontend artifact
-        uses: actions/upload-artifact@v3
+      - name: Upload frontend dist artifact
+        uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
           path: FrontEnd/SOA_frontend/dist
+          retention-days: 7
 
-  docker:
-    needs: build
+      # ---------- BACKEND TESTS ----------
+      - name: Install backend dependencies
+        working-directory: restaurantService
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run backend tests
+        working-directory: restaurantService
+        run: pytest --cov=. --cov-report=html --cov-report=xml --cov-report=term
+
+      - name: Upload backend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: restaurantService/htmlcov
+          retention-days: 7
+
+  # 2. DEPLOY GITHUB PAGES (Static Site)
+  deploy-pages:
+    needs: test-and-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+        
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Make sure the 'project_info' folder exists in your repo root!
+          path: './project_info' 
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
+
+  # 3. DEVELOPMENT ENVIRONMENT (Only on 'main')
+  deploy-dev:
+    needs: test-and-build
+    if: github.ref == 'refs/heads/main'
+    environment: Development
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to Docker Hub
-        run: |
-          echo "${{ secrets.DCKR_PAT }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DCKR_PAT }}
 
-      - name: Build frontend Docker image
-        run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/rirs-frontend:latest ./FrontEnd/SOA_frontend
+      - name: Build and push backend (DEV)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./restaurantService
+          file: ./restaurantService/Dockerfile
+          push: true
+          # Tag is explicitly :dev
+          tags: ${{ secrets.DOCKER_USERNAME }}/rirs-backend:dev
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rirs-backend:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rirs-backend:buildcache,mode=max
 
-      - name: Build backend Docker image
-        run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/rirs-backend:latest ./restaurantService
+      - name: Build and push frontend (DEV)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./FrontEnd/SOA_frontend
+          file: ./FrontEnd/SOA_frontend/Dockerfile
+          push: true
+          # Tag is explicitly :dev
+          tags: ${{ secrets.DOCKER_USERNAME }}/rirs-frontend:dev
+          build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL }}
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rirs-frontend:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rirs-frontend:buildcache,mode=max
 
-      - name: Push frontend Docker image
+      - name: Trigger Render Deployment
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_BACKEND: ${{ secrets.RENDER_SERVICE_ID_BACKEND }}
+          RENDER_FRONTEND: ${{ secrets.RENDER_SERVICE_ID_FRONTEND }}
         run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/rirs-frontend:latest
+          # Deploy Backend
+          curl -X POST "https://api.render.com/v1/services/$RENDER_BACKEND/deploys" \
+          -H "Authorization: Bearer $RENDER_API_KEY" \
+          -H "Content-Type: application/json" \
+          -d '{"clearCache": false}'
+          
+          # Deploy Frontend
+          curl -X POST "https://api.render.com/v1/services/$RENDER_FRONTEND/deploys" \
+          -H "Authorization: Bearer $RENDER_API_KEY" \
+          -H "Content-Type: application/json" \
+          -d '{"clearCache": false}'
 
-      - name: Push backend Docker image
-        run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/rirs-backend:latest
-
-  deploy:
-    needs: docker
+  # 4. PRODUCTION ENVIRONMENT (Only on 'production')
+  deploy-prod:
+    needs: test-and-build
+    if: github.ref == 'refs/heads/production'
+    environment: Production 
     runs-on: ubuntu-latest
 
     steps:
-      - name: Trigger Render Deploy
-        run: |
-          curl -X POST "${{ secrets.RENDER_DEPLOY_URL }}"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DCKR_PAT }}
+
+      # BACKEND (Tag: prod)
+      - name: Build and push backend (PROD)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./restaurantService
+          file: ./restaurantService/Dockerfile
+          push: true
+          # Tag is explicitly :prod
+          tags: ${{ secrets.DOCKER_USERNAME }}/rirs-backend:prod
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rirs-backend:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rirs-backend:buildcache,mode=max
+ 
+      # FRONTEND (Tag: prod)
+      - name: Build and push frontend (PROD)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./FrontEnd/SOA_frontend
+          file: ./FrontEnd/SOA_frontend/Dockerfile
+          push: true
+          # Tag is explicitly :prod
+          tags: ${{ secrets.DOCKER_USERNAME }}/rirs-frontend:prod
+          build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL }}
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rirs-frontend:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rirs-frontend:buildcache,mode=max
