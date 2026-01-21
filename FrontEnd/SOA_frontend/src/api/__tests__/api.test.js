@@ -32,7 +32,7 @@ describe('API Service', () => {
 
       const result = await getRestaurants();
 
-      expect(fetch).toHaveBeenCalledWith('http:/https://rirs-backend-1pv7.onrender.com/restaurants');
+      expect(fetch).toHaveBeenCalledWith('https:/https://rirs-backend-1pv7.onrender.com/restaurants');
       expect(result).toEqual(mockData);
     });
 
@@ -60,7 +60,7 @@ describe('API Service', () => {
 
       const result = await createRestaurant(newRestaurant);
 
-      expect(fetch).toHaveBeenCalledWith('http:/https://rirs-backend-1pv7.onrender.com/restaurants', {
+      expect(fetch).toHaveBeenCalledWith('https:/https://rirs-backend-1pv7.onrender.com/restaurants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newRestaurant),
@@ -84,7 +84,7 @@ describe('API Service', () => {
       const result = await addMenuItem(restaurantId, menuItem);
 
       expect(fetch).toHaveBeenCalledWith(
-        `http://https://rirs-backend-1pv7.onrender.com/restaurants/${restaurantId}/menu`,
+        `https://https://rirs-backend-1pv7.onrender.com/restaurants/${restaurantId}/menu`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
