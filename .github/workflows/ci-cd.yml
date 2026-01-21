@@ -75,7 +75,7 @@ jobs:
       - name: Build and push frontend image
         run: |
           docker build -t ${{ secrets.DOCKER_USERNAME }}/rirs-frontend:latest ./FrontEnd/SOA_frontend
-          docker push ${{ secrets.DOCKR_USERNAME }}/rirs-frontend:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/rirs-frontend:latest
 
       - name: Build and push backend image
         run: |
