@@ -1,39 +1,84 @@
-services:
-  api:
-    build:
-      context: ./restaurantService
-      dockerfile: Dockerfile
-    container_name: food-delivery-api
-    ports:
-      - "5000:5000"
-    environment:
-      - FLASK_ENV=production
-      - MONGO_URI=mongodb+srv://tjankazar_db_user:hem04yJJgOHilA1z@cluster0.ukgsfn4.mongodb.net/?appName=Cluster0&tls=true&tlsAllowInvalidCertificates=true
-    restart: unless-stopped
-    networks:
-      - food-delivery-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/restaurants"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+name: SOA CI/CD Pipeline
 
-  frontend:
-    build:
-      context: ./FrontEnd/SOA_frontend
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_URL=http://localhost:5000
-    container_name: food-delivery-frontend
-    ports:
-      - "3000:80"
-    depends_on:
-      - api
-    restart: unless-stopped
-    networks:
-      - food-delivery-network
+on:
+  push:
+    branches: ["main"]
 
-networks:
-  food-delivery-network:
-    driver: bridge
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ---------- SETUP ----------
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ---------- FRONTEND ----------
+      - name: Install frontend dependencies
+        working-directory: FrontEnd/SOA_frontend
+        run: npm ci
+
+      - name: Run frontend tests with coverage
+        working-directory: FrontEnd/SOA_frontend
+        run: npm test -- --coverage --run
+
+      - name: Upload frontend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: FrontEnd/SOA_frontend/coverage
+          retention-days: 7
+
+      - name: Build frontend
+        working-directory: FrontEnd/SOA_frontend
+        run: npm run build
+
+      # ---------- BACKEND ----------
+      - name: Install backend dependencies
+        working-directory: restaurantService
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run backend tests with coverage
+        working-directory: restaurantService
+        run: pytest --cov=. --cov-report=html --cov-report=xml --cov-report=term
+
+      - name: Upload backend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: restaurantService/htmlcov
+          retention-days: 7
+
+  docker:
+    needs: test-and-build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        run: echo "${{ secrets.DCKR_PAT }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Build and push frontend image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/rirs-frontend:latest ./FrontEnd/SOA_frontend
+          docker push ${{ secrets.DOCKR_USERNAME }}/rirs-frontend:latest
+
+      - name: Build and push backend image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/rirs-backend:latest ./restaurantService
+          docker push ${{ secrets.DOCKER_USERNAME }}/rirs-backend:latest
+ 
