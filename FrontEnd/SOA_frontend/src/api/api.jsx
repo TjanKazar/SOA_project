@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE_URL = 'https://rirs-frontend-y8zp.onrender.com' || 'http://localhost:5000';
 
 // Helper function for handling responses
 const handleResponse = async (response) => {
