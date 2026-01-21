@@ -137,9 +137,8 @@ jobs:
           build-args: |
             VITE_API_URL=${{ secrets.VITE_API_URL }}
           # Docker Layer Caching
-          #cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rirs-frontend:buildcache
-          #cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rirs-frontend:buildcache,mode=max
-          no-cache: true  # Disable cache due to frequent frontend changes
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rirs-frontend:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rirs-frontend:buildcache,mode=max
 
   deploy:
     needs: docker
