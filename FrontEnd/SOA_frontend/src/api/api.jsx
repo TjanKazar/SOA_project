@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://rirs-backend-1pv7.onrender.com' || 'http://localhost:5000';
+const API_BASE_URL = 'https://rirs-backend-1pv7.onrender.com';
 
 // Helper function for handling responses
 const handleResponse = async (response) => {
