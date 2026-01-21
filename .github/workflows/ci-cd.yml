@@ -206,7 +206,7 @@ jobs:
           tags: ${{ secrets.DOCKER_USERNAME }}/rirs-backend:prod
           cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rirs-backend:buildcache
           cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/rirs-backend:buildcache,mode=max
-
+ 
       # FRONTEND (Tag: prod)
       - name: Build and push frontend (PROD)
         uses: docker/build-push-action@v5
