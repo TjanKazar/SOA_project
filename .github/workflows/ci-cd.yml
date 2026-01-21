@@ -28,9 +28,15 @@ jobs:
         working-directory: FrontEnd/SOA_frontend
         run: npm ci
 
-      - name: Test frontend
+      - name: Test frontend with coverage
         working-directory: FrontEnd/SOA_frontend
-        run: npm test -- --run
+        run: npm test -- --coverage --run
+
+      - name: upload frontend coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: FrontEnd/SOA_frontend/coverage
 
       - name: Build frontend
         working-directory: FrontEnd/SOA_frontend
@@ -41,11 +47,17 @@ jobs:
         working-directory: restaurantService
         run: |
           pip install -r requirements.txt
-          pip install pytest
+          pip install pytest pytest-cov
 
-      - name: Test backend
+      - name: Test backend with coverage
         working-directory: restaurantService
-        run: pytest
+        run: pytest --cov=. --cov-report=html --cov-report=xml --cov-report=term
+
+      - name: Upload backend coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: restaurantService/htmlcov
 
   docker:
     needs: test-and-build
